@@ -39,6 +39,7 @@ class UserResponse(BaseModel):
     display_name: str | None = None
     created_at: str
     rating_count: int
+    rating_average: float
 
 
 router = APIRouter()
@@ -62,7 +63,8 @@ async def get_user(
                 re.username AS username,
                 re.display_name AS display_name,
                 re.created_at AS created_at,
-                COUNT(ra.id) AS rating_count
+                COUNT(ra.id) AS rating_count,
+                AVG(ra.score) AS rating_average
                 FROM reviewers re
                 JOIN ratings ra ON ra.reviewer_id = re.id
                 WHERE re.id = ?
@@ -77,6 +79,7 @@ async def get_user(
             display_name=row["display_name"],
             created_at=row["created_at"],
             rating_count=row["rating_count"],
+            rating_average=row["rating_average"],
         )
     finally:
         conn.close()
