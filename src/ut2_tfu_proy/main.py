@@ -8,10 +8,14 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, Path
 from pydantic import BaseModel
 
+from ut2_tfu_proy.users import router as users_router
+
 app = FastAPI(
     title="UT2 TFU Movies API",
     description="API de películas y ratings",
 )
+
+app.include_router(users_router)
 
 _start_time = datetime.now(timezone.utc)
 
@@ -71,7 +75,6 @@ def _get_connection():
     """Lazy import to avoid circular import at module load."""
     from init_db import get_connection as _gc, init_db
 
-    # ensure DB + seed exists (idempotent)
     try:
         init_db()
     except Exception:
