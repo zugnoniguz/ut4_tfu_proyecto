@@ -19,7 +19,7 @@ async def main():
             if r.status_code==429:
                 print(f"    429 body: {r.text[:120]}")
         print(f"  elapsed {time.time()-start:.2f}s")
-        # Verificar bypass
+
         async def fetch_health(idx):
             hurl="http://localhost:8080/health"
             print(f"  [health {idx}] sent -> GET {hurl}", flush=True)

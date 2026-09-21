@@ -1,16 +1,32 @@
 services:
-  # Main application container – NOT exposed to host directly;
-  # it is only reachable via the gateway (which enforces the bounded queue).
-  # If you need direct access for debugging, uncomment the ports mapping.
-  app:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: movies
+      POSTGRES_PASSWORD: movies
+      POSTGRES_DB: movies
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - movies-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U movies -d movies"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  stats:
     build:
-      context: .
+      context: ./services/stats
       dockerfile: Dockerfile
-    container_name: movies-app
+    environment:
+      DATABASE_URL: postgresql://movies:movies@postgres:5432/movies
     expose:
       - "8000"
-    # ports:          # uncomment for direct debugging
-    #   - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - movies-net
     healthcheck:
@@ -19,25 +35,63 @@ services:
       timeout: 3s
       retries: 3
 
-  # Gateway / reverse-proxy with bounded request queue (pre-built nginx).
-  # This is the ONLY service exposed to the host.  All /movies/* traffic
-  # goes through nginx limit_conn (2) + limit_req burst (5) before being forwarded to `app`.
-  # Other paths (/, /health, /users/*, /queue/stats) are proxied without queueing.
-  # Open-source nginx uses burst as queue; nginx Plus would use `queue 5 timeout=10s` in upstream.
-  gateway:
+  reviews:
     build:
-      context: ./gateway
+      context: ./services/reviews
       dockerfile: Dockerfile
-    container_name: movies-gateway
-    ports:
-      - "8080:8080"
+    environment:
+      DATABASE_URL: postgresql://movies:movies@postgres:5432/movies
+    expose:
+      - "8000"
     depends_on:
-      app:
+      postgres:
         condition: service_healthy
     networks:
       - movies-net
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/gateway/health | grep -q ok || exit 1"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  users:
+    build:
+      context: ./services/users
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://movies:movies@postgres:5432/movies
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin123
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - movies-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      stats:
+        condition: service_healthy
+      reviews:
+        condition: service_healthy
+      users:
+        condition: service_healthy
+    networks:
+      - movies-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/gateway/health | grep -q ok || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -45,3 +99,7 @@ services:
 networks:
   movies-net:
     driver: bridge
+
+volumes:
+  postgres-data:
+    driver: local

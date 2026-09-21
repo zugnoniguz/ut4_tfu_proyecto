@@ -1,0 +1,18 @@
+[project]
+name = "reviews-service"
+version = "0.1.0"
+description = "Reviews microservice: CRUD/lectura de reviews-ratings (Postgres backend)"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi[standard]>=0.141.1",
+    "psutil>=7.2.2",
+    "psycopg[binary]>=3.2",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build]
+module-name = "reviews_service"
+module-root = "src"
