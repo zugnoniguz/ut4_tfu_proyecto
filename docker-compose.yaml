@@ -20,6 +20,7 @@ services:
     build:
       context: ./services/stats
       dockerfile: Dockerfile
+    scale: 3
     environment:
       DATABASE_URL: postgresql://movies:movies@postgres:5432/movies
     expose:
@@ -39,6 +40,7 @@ services:
     build:
       context: ./services/reviews
       dockerfile: Dockerfile
+    scale: 3
     environment:
       DATABASE_URL: postgresql://movies:movies@postgres:5432/movies
     expose:
@@ -58,6 +60,7 @@ services:
     build:
       context: ./services/users
       dockerfile: Dockerfile
+    scale: 3
     environment:
       DATABASE_URL: postgresql://movies:movies@postgres:5432/movies
       ADMIN_USERNAME: admin
