@@ -1,18 +1,9 @@
-import os
-import secrets
-
 import psutil
 from datetime import datetime, timezone
-from fastapi import Depends, FastAPI, HTTPException, Path
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi import FastAPI, Header, HTTPException, Path
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 from users_service.db import get_connection, ping
-
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
-
-security = HTTPBasic()
 
 app = FastAPI(
     title="Users Service",
@@ -20,18 +11,6 @@ app = FastAPI(
 )
 
 _start_time = datetime.now(timezone.utc)
-
-
-def _verify_admin(credentials: HTTPBasicCredentials = Depends(security)) -> str:
-    username_ok = secrets.compare_digest(credentials.username, ADMIN_USERNAME)
-    password_ok = secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
-    if not (username_ok and password_ok):
-        raise HTTPException(
-            status_code=401,
-            detail="Unauthorized: invalid admin credentials",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return credentials.username
 
 
 class HealthResponse(BaseModel):
@@ -81,11 +60,11 @@ def health():
     "/users/{user_id}",
     response_model=UserResponse,
     summary="Obtener información de un usuario por ID (admin)",
-    description="Devuelve la información de un reviewer/usuario dado su ID. Requiere autenticación Basic con usuario y contraseña de admin.",
+    description="La autenticación la realiza el gateway (Gateway Offloading).",
 )
 async def get_user(
     user_id: int = Path(..., ge=1, description="ID del usuario"),
-    admin: str = Depends(_verify_admin),
+    authenticated_user: str = Header(..., alias="X-Authenticated-User"),
 ):
     with get_connection() as conn:
         with conn.cursor() as cur:
