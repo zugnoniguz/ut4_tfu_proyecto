@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from collections import Counter
 from fastapi import FastAPI, HTTPException, Path
 from pydantic import BaseModel
-
+from fastapi.responses import JSONResponse
 from stats_service.db import get_connection, ping
 
 app = FastAPI(
@@ -55,16 +55,21 @@ async def root():
     "/health",
     summary="Estado de salud del servicio",
     response_model=HealthResponse,
+    responses={503: {"model": HealthResponse, "description": "Dependencia crítica caída"}},
 )
 async def health():
     uptime = (datetime.now(timezone.utc) - _start_time).total_seconds()
-    return HealthResponse(
-        status="ok",
+    db_ok = ping()
+    body= HealthResponse(
+        status="ok" if db_ok else "down",
         timestamp=datetime.now(timezone.utc).isoformat(),
         cpu_percent=psutil.cpu_percent(),
         uptime=uptime,
-        db="ok" if ping() else "down",
+        db="ok" if db_ok else "down",
     )
+    if not db_ok:
+        return JSONResponse(status_code=503, content=body.dict())
+    return body
 
 
 @app.get(
