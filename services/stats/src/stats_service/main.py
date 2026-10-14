@@ -5,10 +5,11 @@ import time
 import psutil
 from datetime import datetime, timezone
 from collections import Counter
-from fastapi import FastAPI, HTTPException, Path
+from fastapi import FastAPI, HTTPException, Path, Response
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 from stats_service.db import get_connection, ping
+from stats_service import cache
 
 app = FastAPI(
     title="Stats Service",
@@ -81,9 +82,15 @@ async def health():
         "cantidad, promedio, mínimo, máximo, mediana, desvío estándar y distribución de puntajes."
     ),
 )
-async def movie_stats(
+def movie_stats(
+    response: Response,
     movie_id: int = Path(..., ge=1, description="ID de la película"),
 ):
+    cached, cache_ok = cache.get_cached(movie_id)
+    if cached is not None:
+        response.headers["X-Cache"] = "HIT"
+        return cached
+
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -133,7 +140,7 @@ async def movie_stats(
                 distribution = {str(k): v for k, v in sorted(dist_counter.items())}
 
             time.sleep(random.random() * 3)
-            return MovieStatsResponse(
+            result = MovieStatsResponse(
                 movie=movie,
                 rating_count=count,
                 avg_rating=avg,
@@ -144,3 +151,10 @@ async def movie_stats(
                 stddev_rating=std,
                 score_distribution=distribution,
             )
+
+            if cache_ok:
+                cache.set_cached(movie_id, result.model_dump())
+                response.headers["X-Cache"] = "MISS"
+            else:
+                response.headers["X-Cache"] = "BYPASS"
+            return result
