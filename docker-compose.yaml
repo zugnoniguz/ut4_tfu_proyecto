@@ -9,7 +9,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     networks:
-      - movies-net
+      - backend
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U movies -d movies"]
       interval: 5s
@@ -19,7 +19,7 @@ services:
   redis:
     image: redis:7-alpine
     networks:
-      - movies-net
+      - backend
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -42,7 +42,7 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - movies-net
+      - backend
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
@@ -62,7 +62,7 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - movies-net
+      - backend
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
@@ -76,15 +76,13 @@ services:
     scale: 3
     environment:
       DATABASE_URL: postgresql://movies:movies@postgres:5432/movies
-      ADMIN_USERNAME: admin
-      ADMIN_PASSWORD: admin123
     expose:
       - "8000"
     depends_on:
       postgres:
         condition: service_healthy
     networks:
-      - movies-net
+      - backend
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
@@ -95,6 +93,9 @@ services:
     build:
       context: ./gateway
       dockerfile: Dockerfile
+    environment:
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
     ports:
       - "8080:8080"
     depends_on:
@@ -105,7 +106,8 @@ services:
       users:
         condition: service_healthy
     networks:
-      - movies-net
+      - frontend
+      - backend
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/gateway/health | grep -q ok || exit 1"]
       interval: 10s
@@ -113,8 +115,11 @@ services:
       retries: 3
 
 networks:
-  movies-net:
+  frontend:
     driver: bridge
+  backend:
+    driver: bridge
+    internal: true
 
 volumes:
   postgres-data:
