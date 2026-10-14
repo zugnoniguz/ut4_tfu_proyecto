@@ -5,11 +5,12 @@ import time
 import psutil
 from datetime import datetime, timezone
 from collections import Counter
-from fastapi import FastAPI, HTTPException, Path, Response
+from fastapi import FastAPI, HTTPException, Path, Request, Response
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 from stats_service.db import get_connection, ping
-from stats_service import cache
+from stats_service import cache, jobs 
+import redis
 
 app = FastAPI(
     title="Stats Service",
@@ -158,3 +159,51 @@ def movie_stats(
             else:
                 response.headers["X-Cache"] = "BYPASS"
             return result
+
+
+
+def _process_job(movie_id: int) -> dict:
+    """Lo usa el hilo trabajador: reutiliza movie_stats, incluida la caché."""
+    result = movie_stats(Response(), movie_id)
+    return result if isinstance(result, dict) else result.model_dump()
+
+
+@app.on_event("startup")
+def _start_worker():
+    jobs.start_worker(_process_job)
+
+
+@app.post(
+    "/movies/{movie_id}/stats/jobs",
+    status_code=202,
+    summary="Solicitar estadísticas de forma asíncrona",
+)
+def create_stats_job(
+    request: Request,
+    response: Response,
+    movie_id: int = Path(..., ge=1, description="ID de la película"),
+):
+    try:
+        job_id = jobs.create_job(movie_id)
+    except redis.RedisError:
+        raise HTTPException(status_code=503, detail="Cola de trabajos no disponible")
+
+    prefix = request.headers.get("X-Forwarded-Prefix", "")
+    location = f"{prefix}/jobs/{job_id}"
+    response.headers["Location"] = location
+    response.headers["Retry-After"] = "2"
+    return {"job_id": job_id, "status": "pending", "status_url": location}
+
+
+@app.get("/jobs/{job_id}", summary="Consultar el estado de un trabajo")
+def get_stats_job(job_id: str, response: Response):
+    try:
+        job = jobs.get_job(job_id)
+    except redis.RedisError:
+        raise HTTPException(status_code=503, detail="Cola de trabajos no disponible")
+
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    if job["status"] in ("pending", "processing"):
+        response.headers["Retry-After"] = "2"
+    return job
